@@ -4,31 +4,51 @@ import db from './db.js';
 import { upsertSubject, upsertChapter } from './content.js';
 import { subjects } from '../src/data/subjects.js';
 import { chapters } from '../src/data/index.js';
+import { bundledLectures } from '../src/data/lectures.js';
+import { ensureChapter } from './lectures.js';
 
-const force = process.argv.includes('--force');
-const count = db.prepare('SELECT COUNT(*) AS n FROM chapters').get().n;
+async function seed() {
+  await db.initDb();
+  const force = process.argv.includes('--force');
+  const countRow = await db.get('SELECT COUNT(*) AS n FROM chapters');
+  const count = Number(countRow?.n || 0);
 
-if (count > 0 && !force) {
-  console.log(`Database already has ${count} chapters. Nothing changed. Use --force to overwrite.`);
-} else {
-  subjects.forEach((s, i) => upsertSubject(s, i));
-  chapters.forEach((c) => upsertChapter(c));
-  console.log(`Seeded ${subjects.length} subjects and ${chapters.length} chapters.`);
+  if (count > 0 && !force) {
+    console.log(`Database already has ${count} chapters. Nothing changed. Use --force to overwrite.`);
+  } else {
+    for (const [i, s] of subjects.entries()) {
+      await upsertSubject(s, i);
+    }
+    for (const c of chapters) {
+      await upsertChapter(c);
+    }
+    console.log(`Seeded ${subjects.length} subjects and ${chapters.length} chapters.`);
+  }
+
+  for (const lec of bundledLectures) {
+    let chId = lec.chapterId;
+    if (lec.chapterTitle || lec.chapterId) {
+      try {
+        const resolved = await ensureChapter(lec.subjectId, lec.chapterTitle || lec.chapterId);
+        chId = resolved.cleanChapterId;
+      } catch {
+        /* ignore */
+      }
+    }
+    const exists = await db.get('SELECT 1 FROM lectures WHERE id = ? OR video_id = ?', [lec.id, lec.videoId]);
+    if (!exists) {
+      await db.run(`
+        INSERT INTO lectures (id, title, video_id, video_url, subject_id, chapter_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [lec.id, lec.title, lec.videoId, lec.videoUrl, lec.subjectId, chId, lec.createdAt || Date.now()]);
+      console.log(`Seeded lecture: "${lec.title}"`);
+    }
+  }
+
+  process.exit(0);
 }
 
-const lectureCount = db.prepare('SELECT COUNT(*) AS n FROM lectures').get().n;
-if (lectureCount === 0) {
-  db.prepare(`
-    INSERT INTO lectures (id, title, video_id, video_url, subject_id, chapter_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    'lec_sample_matrices',
-    'Matrices & Operations Full Masterclass',
-    'vB9_nFh2oXo',
-    'https://www.youtube.com/watch?v=vB9_nFh2oXo',
-    'maths',
-    'matrices',
-    Date.now()
-  );
-  console.log('Seeded sample lecture.');
-}
+seed().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

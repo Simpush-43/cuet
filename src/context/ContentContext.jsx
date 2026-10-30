@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { subjects as bundledSubjects } from '../data/subjects.js';
 import { chapters as bundledChapters } from '../data/index.js';
+import { bundledLectures } from '../data/lectures.js';
 import { api } from '../utils/api.js';
 
 const ContentContext = createContext(null);
@@ -11,7 +12,7 @@ export function ContentProvider({ children }) {
   const [state, setState] = useState({
     subjects: bundledSubjects,
     chapters: bundledChapters,
-    lectures: [],
+    lectures: bundledLectures || [],
     source: 'bundled',
   });
 
@@ -23,9 +24,42 @@ export function ContentProvider({ children }) {
       ]);
 
       const content = contentData.status === 'fulfilled' ? contentData.value : null;
-      const lectures = lecturesData.status === 'fulfilled' && Array.isArray(lecturesData.value)
+      let lectures = lecturesData.status === 'fulfilled' && Array.isArray(lecturesData.value)
         ? lecturesData.value
         : (content?.lectures || []);
+
+      // Check local cache for persistence across ephemeral host restarts
+      let localCached = [];
+      try {
+        localCached = JSON.parse(window.localStorage.getItem('sb:lectures_cache') || '[]');
+      } catch {
+        localCached = [];
+      }
+
+      // Check if any lectures in local cache are missing from the server
+      const existingIds = new Set(lectures.map((l) => l.id || l.videoId));
+      const missingFromDb = localCached.filter((l) => !existingIds.has(l.id) && !existingIds.has(l.videoId));
+
+      if (missingFromDb.length > 0) {
+        // Auto-rehydrate/sync missing lectures to server
+        try {
+          await api('/api/lectures/sync', {
+            method: 'POST',
+            body: { lectures: missingFromDb },
+          });
+          const reloaded = await api('/api/lectures');
+          if (Array.isArray(reloaded) && reloaded.length > 0) lectures = reloaded;
+        } catch {
+          lectures = [...lectures, ...missingFromDb];
+        }
+      }
+
+      // Keep cache updated
+      if (lectures.length > 0) {
+        try {
+          window.localStorage.setItem('sb:lectures_cache', JSON.stringify(lectures));
+        } catch {}
+      }
 
       if (content?.subjects?.length && content?.chapters?.length) {
         setState({

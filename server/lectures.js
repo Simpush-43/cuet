@@ -46,7 +46,7 @@ export function extractYouTubeId(urlOrId) {
   return null;
 }
 
-export function ensureChapter(subjectId, chapterInput) {
+export async function ensureChapter(subjectId, chapterInput) {
   if (!chapterInput || typeof chapterInput !== 'string' || chapterInput.trim() === '') {
     return { cleanChapterId: null, chapterTitle: null };
   }
@@ -57,7 +57,7 @@ export function ensureChapter(subjectId, chapterInput) {
   }
 
   // 1. Try finding by chapter ID
-  let existing = db.prepare('SELECT id, title, subject_id FROM chapters WHERE id = ?').get(title);
+  let existing = await db.get('SELECT id, title, subject_id FROM chapters WHERE id = ?', [title]);
   if (existing) {
     if (existing.subject_id !== subjectId) {
       throw new Error('Selected chapter belongs to a different subject.');
@@ -66,29 +66,30 @@ export function ensureChapter(subjectId, chapterInput) {
   }
 
   // 2. Try finding by Title in the same subject
-  existing = db.prepare('SELECT id, title, subject_id FROM chapters WHERE subject_id = ? AND LOWER(title) = LOWER(?)').get(subjectId, title);
+  existing = await db.get('SELECT id, title, subject_id FROM chapters WHERE subject_id = ? AND LOWER(title) = LOWER(?)', [subjectId, title]);
   if (existing) {
     return { cleanChapterId: existing.id, chapterTitle: existing.title };
   }
 
   // 3. Auto-promote/create chapter for this subject
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `ch_${Date.now().toString(36)}`;
+  const maxSort = await db.get('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM chapters WHERE subject_id = ?', [subjectId]);
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO chapters (id, subject_id, title, sort)
-    VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM chapters WHERE subject_id = ?))
+    VALUES (?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET title = excluded.title
-  `).run(slug, subjectId, title, subjectId);
+  `, [slug, subjectId, title, maxSort?.n || 1]);
 
   // 4. Remove this title from subject.planned if it was listed there
-  const sub = db.prepare('SELECT planned FROM subjects WHERE id = ?').get(subjectId);
+  const sub = await db.get('SELECT planned FROM subjects WHERE id = ?', [subjectId]);
   if (sub && sub.planned) {
     try {
-      const planned = JSON.parse(sub.planned);
+      const planned = typeof sub.planned === 'string' ? JSON.parse(sub.planned) : sub.planned;
       if (Array.isArray(planned)) {
         const filtered = planned.filter((t) => t.toLowerCase() !== title.toLowerCase());
         if (filtered.length !== planned.length) {
-          db.prepare('UPDATE subjects SET planned = ? WHERE id = ?').run(JSON.stringify(filtered), subjectId);
+          await db.run('UPDATE subjects SET planned = ? WHERE id = ?', [JSON.stringify(filtered), subjectId]);
         }
       }
     } catch {
@@ -102,13 +103,13 @@ export function ensureChapter(subjectId, chapterInput) {
 const router = Router();
 
 // GET /api/lectures - Retrieve all lectures with optional subject/chapter filter
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { subjectId, chapterId } = req.query;
 
   let query = `
-    SELECT l.id, l.title, l.video_id AS videoId, l.video_url AS videoUrl,
-           l.subject_id AS subjectId, l.chapter_id AS chapterId, l.created_at AS createdAt,
-           s.name AS subjectName, c.title AS chapterTitle
+    SELECT l.id, l.title, l.video_id AS "videoId", l.video_url AS "videoUrl",
+           l.subject_id AS "subjectId", l.chapter_id AS "chapterId", l.created_at AS "createdAt",
+           s.name AS "subjectName", c.title AS "chapterTitle"
     FROM lectures l
     JOIN subjects s ON s.id = l.subject_id
     LEFT JOIN chapters c ON c.id = l.chapter_id
@@ -130,21 +131,21 @@ router.get('/', (req, res) => {
   }
   query += ' ORDER BY l.created_at DESC';
 
-  const lectures = db.prepare(query).all(...params);
+  const lectures = await db.all(query, params);
   res.json(lectures);
 });
 
 // GET /api/lectures/:id - Retrieve single lecture
-router.get('/:id', (req, res) => {
-  const lecture = db.prepare(`
-    SELECT l.id, l.title, l.video_id AS videoId, l.video_url AS videoUrl,
-           l.subject_id AS subjectId, l.chapter_id AS chapterId, l.created_at AS createdAt,
-           s.name AS subjectName, c.title AS chapterTitle
+router.get('/:id', async (req, res) => {
+  const lecture = await db.get(`
+    SELECT l.id, l.title, l.video_id AS "videoId", l.video_url AS "videoUrl",
+           l.subject_id AS "subjectId", l.chapter_id AS "chapterId", l.created_at AS "createdAt",
+           s.name AS "subjectName", c.title AS "chapterTitle"
     FROM lectures l
     JOIN subjects s ON s.id = l.subject_id
     LEFT JOIN chapters c ON c.id = l.chapter_id
     WHERE l.id = ?
-  `).get(req.params.id);
+  `, [req.params.id]);
 
   if (!lecture) {
     return res.status(404).json({ error: 'Lecture not found.' });
@@ -154,10 +155,9 @@ router.get('/:id', (req, res) => {
 });
 
 // POST /api/lectures - Create lecture (Admin only)
-router.post('/', requireAdmin, (req, res) => {
+router.post('/', requireAdmin, async (req, res) => {
   const { title, videoUrl, videoId: rawVideoId, subjectId, chapterId } = req.body || {};
 
-  // 1. Validate title
   const cleanTitle = (title || '').trim();
   if (!cleanTitle) {
     return res.status(400).json({ error: 'Lecture title is required.' });
@@ -166,7 +166,6 @@ router.post('/', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Lecture title must be 200 characters or less.' });
   }
 
-  // 2. Extract and validate YouTube Video ID
   const videoInput = (videoUrl || rawVideoId || '').trim();
   const extractedId = extractYouTubeId(videoInput);
   if (!extractedId) {
@@ -175,21 +174,19 @@ router.post('/', requireAdmin, (req, res) => {
     });
   }
 
-  // 3. Validate subject existence
   if (!subjectId) {
     return res.status(400).json({ error: 'Subject is required.' });
   }
-  const subjectExists = db.prepare('SELECT id, name FROM subjects WHERE id = ?').get(subjectId);
+  const subjectExists = await db.get('SELECT id, name FROM subjects WHERE id = ?', [subjectId]);
   if (!subjectExists) {
     return res.status(400).json({ error: 'Selected subject does not exist.' });
   }
 
-  // 4. Validate or auto-create chapter if provided
   let cleanChapterId = null;
   let chapterTitle = null;
   if (chapterId && chapterId.trim() !== '') {
     try {
-      const resolved = ensureChapter(subjectId, chapterId);
+      const resolved = await ensureChapter(subjectId, chapterId);
       cleanChapterId = resolved.cleanChapterId;
       chapterTitle = resolved.chapterTitle;
     } catch (err) {
@@ -197,19 +194,15 @@ router.post('/', requireAdmin, (req, res) => {
     }
   }
 
-  // 5. Generate ID and persist to database
   const id = `lec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const createdAt = Date.now();
-  const canonicalUrl = videoInput.startsWith('http')
-    ? videoInput
-    : `https://www.youtube.com/watch?v=`;
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO lectures (id, title, video_id, video_url, subject_id, chapter_id, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, cleanTitle, extractedId, videoInput, subjectId, cleanChapterId, createdAt);
+  `, [id, cleanTitle, extractedId, videoInput, subjectId, cleanChapterId, createdAt]);
 
-  const newLecture = {
+  res.status(201).json({
     id,
     title: cleanTitle,
     videoId: extractedId,
@@ -219,15 +212,13 @@ router.post('/', requireAdmin, (req, res) => {
     chapterId: cleanChapterId,
     chapterTitle,
     createdAt,
-  };
-
-  res.status(201).json(newLecture);
+  });
 });
 
 // PUT /api/lectures/:id - Update existing lecture (Admin only)
-router.put('/:id', requireAdmin, (req, res) => {
+router.put('/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const existing = db.prepare('SELECT * FROM lectures WHERE id = ?').get(id);
+  const existing = await db.get('SELECT * FROM lectures WHERE id = ?', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'Lecture not found.' });
   }
@@ -253,7 +244,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   if (!subjectId) {
     return res.status(400).json({ error: 'Subject is required.' });
   }
-  const subjectExists = db.prepare('SELECT id, name FROM subjects WHERE id = ?').get(subjectId);
+  const subjectExists = await db.get('SELECT id, name FROM subjects WHERE id = ?', [subjectId]);
   if (!subjectExists) {
     return res.status(400).json({ error: 'Selected subject does not exist.' });
   }
@@ -262,7 +253,7 @@ router.put('/:id', requireAdmin, (req, res) => {
   let chapterTitle = null;
   if (chapterId && chapterId.trim() !== '') {
     try {
-      const resolved = ensureChapter(subjectId, chapterId);
+      const resolved = await ensureChapter(subjectId, chapterId);
       cleanChapterId = resolved.cleanChapterId;
       chapterTitle = resolved.chapterTitle;
     } catch (err) {
@@ -270,13 +261,13 @@ router.put('/:id', requireAdmin, (req, res) => {
     }
   }
 
-  db.prepare(`
+  await db.run(`
     UPDATE lectures
     SET title = ?, video_id = ?, video_url = ?, subject_id = ?, chapter_id = ?
     WHERE id = ?
-  `).run(cleanTitle, extractedId, videoInput, subjectId, cleanChapterId, id);
+  `, [cleanTitle, extractedId, videoInput, subjectId, cleanChapterId, id]);
 
-  const updatedLecture = {
+  res.json({
     id,
     title: cleanTitle,
     videoId: extractedId,
@@ -286,21 +277,70 @@ router.put('/:id', requireAdmin, (req, res) => {
     chapterId: cleanChapterId,
     chapterTitle,
     createdAt: existing.created_at,
-  };
-
-  res.json(updatedLecture);
+  });
 });
 
 // DELETE /api/lectures/:id - Delete lecture (Admin only)
-router.delete('/:id', requireAdmin, (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const existing = db.prepare('SELECT * FROM lectures WHERE id = ?').get(id);
+  const existing = await db.get('SELECT * FROM lectures WHERE id = ?', [id]);
   if (!existing) {
     return res.status(404).json({ error: 'Lecture not found.' });
   }
 
-  db.prepare('DELETE FROM lectures WHERE id = ?').run(id);
+  await db.run('DELETE FROM lectures WHERE id = ?', [id]);
   res.json({ ok: true, id });
+});
+
+// POST /api/lectures/sync - Auto-sync/rehydrate lectures after container cold boot
+router.post('/sync', async (req, res) => {
+  const { lectures: incomingList } = req.body || {};
+  if (!Array.isArray(incomingList) || incomingList.length === 0) {
+    return res.json({ ok: true, synced: 0 });
+  }
+
+  let count = 0;
+  for (const item of incomingList) {
+    if (!item.title || !item.subjectId) continue;
+    const vId = extractYouTubeId(item.videoUrl || item.videoId);
+    if (!vId) continue;
+
+    let cleanChapterId = null;
+    if (item.chapterTitle || item.chapterId) {
+      try {
+        const resolved = await ensureChapter(item.subjectId, item.chapterTitle || item.chapterId);
+        cleanChapterId = resolved.cleanChapterId;
+      } catch {
+        /* fallback */
+      }
+    }
+
+    try {
+      await db.run(`
+        INSERT INTO lectures (id, title, video_id, video_url, subject_id, chapter_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          video_id = excluded.video_id,
+          video_url = excluded.video_url,
+          subject_id = excluded.subject_id,
+          chapter_id = excluded.chapter_id
+      `, [
+        item.id || `lec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+        item.title.trim(),
+        vId,
+        item.videoUrl || `https://www.youtube.com/watch?v=${vId}`,
+        item.subjectId,
+        cleanChapterId,
+        item.createdAt || Date.now(),
+      ]);
+      count++;
+    } catch {
+      /* ignore single conflict */
+    }
+  }
+
+  res.json({ ok: true, synced: count });
 });
 
 export default router;

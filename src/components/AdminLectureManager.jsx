@@ -41,12 +41,27 @@ export default function AdminLectureManager() {
     try {
       setLoading(true);
       const data = await api('/api/lectures');
-      setLectures(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setLectures(list);
+      try {
+        if (list.length > 0) window.localStorage.setItem('sb:lectures_cache', JSON.stringify(list));
+      } catch {}
     } catch (err) {
       setMsg({ text: err.message || 'Failed to load lectures.', type: 'error' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const copyLecturesCode = () => {
+    const code = `// Permanent bundled lectures for src/data/lectures.js
+export const bundledLectures = ${JSON.stringify(lectures, null, 2)};
+`;
+    navigator.clipboard.writeText(code);
+    setMsg({
+      text: '✓ Copied lectures code! Paste into src/data/lectures.js and commit to make them 100% permanent on Render.',
+      type: 'success',
+    });
   };
 
   useEffect(() => {
@@ -510,6 +525,24 @@ export default function AdminLectureManager() {
             </table>
           </div>
         )}
+
+        <div className="admin-persistence-bar">
+          <div className="persistence-info">
+            <strong>Render Cloud Persistence:</strong>
+            <p>
+              Free-tier Render services sleep when inactive and reset local files. Click below to copy code for{' '}
+              <code>src/data/lectures.js</code> to permanently bake current lectures into your repository.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="ghost copy-code-btn"
+            onClick={copyLecturesCode}
+            disabled={lectures.length === 0}
+          >
+            📋 Copy Code for src/data/lectures.js
+          </button>
+        </div>
       </section>
     </div>
   );
