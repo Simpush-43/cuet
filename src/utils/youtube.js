@@ -9,19 +9,35 @@ export function extractYouTubeId(urlOrId) {
     return trimmed;
   }
 
-  // Regex covering standard watch, shortened youtu.be, embed, nocookie, and shorts
-  const pattern = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i;
+  // Regex covering standard watch, shortened youtu.be, embed, nocookie, live, and shorts
+  const pattern = /(?:youtu\.be\/|(?:[a-z0-9-]+\.)?youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|e\/|live\/|shorts\/|watch\?.*?[?&]v=))([a-zA-Z0-9_-]{11})/i;
   const match = trimmed.match(pattern);
   if (match && match[1]) {
     return match[1];
   }
 
-  // Fallback URL parameter parser
+  // Fallback URL parser for any complex or custom path structure
   try {
     const parsed = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
-    if (parsed.hostname.includes('youtube.com')) {
+    const host = parsed.hostname.toLowerCase();
+
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/')[1];
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+    }
+
+    if (host.includes('youtube.com') || host.includes('youtube-nocookie.com')) {
+      // 1. Search param: ?v=...
       const v = parsed.searchParams.get('v');
       if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+
+      // 2. Path segments: /live/:id, /shorts/:id, /embed/:id, etc.
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const prefixIdx = segments.findIndex((s) => ['live', 'shorts', 'embed', 'v', 'e'].includes(s.toLowerCase()));
+      if (prefixIdx !== -1 && segments[prefixIdx + 1]) {
+        const id = segments[prefixIdx + 1];
+        if (/^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+      }
     }
   } catch {
     /* ignore malformed URL string */

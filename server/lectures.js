@@ -11,19 +11,33 @@ export function extractYouTubeId(urlOrId) {
     return trimmed;
   }
 
-  // Common YouTube URL formats (standard watch, shortened youtu.be, embed, shorts)
-  const pattern = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i;
+  // Common YouTube URL formats (standard watch, shortened youtu.be, embed, live, shorts)
+  const pattern = /(?:youtu\.be\/|(?:[a-z0-9-]+\.)?youtube(?:-nocookie)?\.com\/(?:embed\/|v\/|e\/|live\/|shorts\/|watch\?.*?[?&]v=))([a-zA-Z0-9_-]{11})/i;
   const match = trimmed.match(pattern);
   if (match && match[1]) {
     return match[1];
   }
 
-  // URL parsing fallback for complex query strings
+  // URL parsing fallback for complex query strings and subpaths
   try {
     const parsed = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
-    if (parsed.hostname.includes('youtube.com')) {
+    const host = parsed.hostname.toLowerCase();
+
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/')[1];
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+    }
+
+    if (host.includes('youtube.com') || host.includes('youtube-nocookie.com')) {
       const v = parsed.searchParams.get('v');
       if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      const prefixIdx = segments.findIndex((s) => ['live', 'shorts', 'embed', 'v', 'e'].includes(s.toLowerCase()));
+      if (prefixIdx !== -1 && segments[prefixIdx + 1]) {
+        const id = segments[prefixIdx + 1];
+        if (/^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+      }
     }
   } catch {
     /* invalid url string */
