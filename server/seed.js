@@ -15,3 +15,20 @@ if (count > 0 && !force) {
   chapters.forEach((c) => upsertChapter(c));
   console.log(`Seeded ${subjects.length} subjects and ${chapters.length} chapters.`);
 }
+
+const lectureCount = db.prepare('SELECT COUNT(*) AS n FROM lectures').get().n;
+if (lectureCount === 0) {
+  db.prepare(`
+    INSERT INTO lectures (id, title, video_id, video_url, subject_id, chapter_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    'lec_sample_matrices',
+    'Matrices & Operations Full Masterclass',
+    'vB9_nFh2oXo',
+    'https://www.youtube.com/watch?v=vB9_nFh2oXo',
+    'maths',
+    'matrices',
+    Date.now()
+  );
+  console.log('Seeded sample lecture.');
+}

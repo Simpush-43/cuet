@@ -47,8 +47,19 @@ CREATE TABLE IF NOT EXISTS videos (
   size INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lectures (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  video_id TEXT NOT NULL,
+  video_url TEXT NOT NULL DEFAULT '',
+  subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  chapter_id TEXT REFERENCES chapters(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_questions_chapter ON questions(chapter_id, kind, position);
 CREATE INDEX IF NOT EXISTS idx_videos_chapter ON videos(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_lectures_subject ON lectures(subject_id);
+CREATE INDEX IF NOT EXISTS idx_lectures_chapter ON lectures(chapter_id);
 `);
 
 export default db;

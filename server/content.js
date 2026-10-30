@@ -10,6 +10,15 @@ export function getContent() {
   }));
   const questions = db.prepare('SELECT * FROM questions ORDER BY chapter_id, kind, position').all();
   const videos = db.prepare('SELECT * FROM videos ORDER BY created_at').all();
+  const lectures = db.prepare(`
+    SELECT l.id, l.title, l.video_id AS videoId, l.video_url AS videoUrl,
+           l.subject_id AS subjectId, l.chapter_id AS chapterId, l.created_at AS createdAt,
+           s.name AS subjectName, c.title AS chapterTitle
+    FROM lectures l
+    JOIN subjects s ON s.id = l.subject_id
+    LEFT JOIN chapters c ON c.id = l.chapter_id
+    ORDER BY l.created_at DESC
+  `).all();
 
   const toQ = (r) => ({ q: r.q, options: parse(r.options, []), answer: r.answer, explanation: r.explanation });
 
@@ -26,8 +35,9 @@ export function getContent() {
     videos: videos
       .filter((v) => v.chapter_id === c.id)
       .map((v) => ({ id: v.id, title: v.title, url: `/api/videos/${v.id}/stream` })),
+    lectures: lectures.filter((l) => l.chapterId === c.id),
   }));
-  return { subjects, chapters };
+  return { subjects, chapters, lectures };
 }
 
 export function upsertSubject(s, sort = 0) {

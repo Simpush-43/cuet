@@ -7,6 +7,7 @@ import db from './db.js';
 import { getContent, upsertChapter, validateChapter } from './content.js';
 import { checkPassword, signToken, requireAdmin, loginGuard } from './auth.js';
 import { videoUpload, filePath } from './upload.js';
+import lectureRouter from './lectures.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -17,6 +18,8 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/content', (_req, res) => res.json(getContent()));
+
+app.use('/api/lectures', lectureRouter);
 
 // Range requests (seeking) are handled by res.sendFile.
 app.get('/api/videos/:id/stream', (req, res) => {
