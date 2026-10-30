@@ -1,0 +1,83 @@
+// Every subject gets its own section automatically.
+// `planned` = chapter titles shown as "coming soon" until you add a file for them
+// in src/data/chapters (then remove the title from this list).
+export const subjects = [
+  {
+    id: 'maths',
+    name: 'Mathematics',
+    blurb: 'Class 12 NCERT. Key for BCA and Integrated MCA.',
+    planned: [
+      'Relations and Functions',
+      'Inverse Trigonometric Functions',
+      'Applications of Derivatives',
+      'Integrals',
+      'Applications of Integrals',
+      'Differential Equations',
+      'Vector Algebra',
+      'Three Dimensional Geometry',
+      'Linear Programming',
+      'Probability',
+    ],
+  },
+  {
+    id: 'physics',
+    name: 'Physics',
+    blurb: 'Class 12 NCERT.',
+    planned: [
+      'Electric Charges and Fields',
+      'Electrostatic Potential and Capacitance',
+      'Current Electricity',
+      'Moving Charges and Magnetism',
+      'Magnetism and Matter',
+      'Electromagnetic Induction',
+      'Alternating Current',
+      'Electromagnetic Waves',
+      'Ray Optics and Optical Instruments',
+      'Wave Optics',
+      'Dual Nature of Radiation and Matter',
+      'Atoms',
+      'Nuclei',
+      'Semiconductor Electronics',
+    ],
+  },
+  {
+    id: 'chemistry',
+    name: 'Chemistry',
+    blurb: 'Class 12 NCERT.',
+    planned: [
+      'Solutions',
+      'Electrochemistry',
+      'Chemical Kinetics',
+      'd- and f-Block Elements',
+      'Coordination Compounds',
+      'Haloalkanes and Haloarenes',
+      'Alcohols, Phenols and Ethers',
+      'Aldehydes, Ketones and Carboxylic Acids',
+      'Amines',
+      'Biomolecules',
+    ],
+  },
+  {
+    id: 'english',
+    name: 'English',
+    blurb: 'Reading comprehension and verbal ability.',
+    planned: [
+      'Reading Comprehension',
+      'Vocabulary: Synonyms and Antonyms',
+      'Verbal Ability: Fill in the Blanks',
+      'Sentence Rearrangement',
+    ],
+  },
+  {
+    id: 'general',
+    name: 'General Test',
+    blurb: 'Reasoning, quant and current affairs.',
+    planned: [
+      'General Knowledge',
+      'Current Affairs',
+      'Numerical Ability',
+      'Quantitative Reasoning',
+      'Logical and Analytical Reasoning',
+    ],
+  },
+];
