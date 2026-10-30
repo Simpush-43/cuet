@@ -6,6 +6,17 @@ import SubjectNav from '../components/SubjectNav.jsx';
 import ProgressBar from '../components/ProgressBar.jsx';
 import LecturePlayer from '../components/LecturePlayer.jsx';
 
+function matchesChapter(lecture, chapterTitle) {
+  if (!lecture || !chapterTitle) return false;
+  if (lecture.chapterTitle && lecture.chapterTitle.toLowerCase() === chapterTitle.toLowerCase()) return true;
+  if (lecture.chapterId && lecture.chapterId === chapterTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')) return true;
+
+  const w1 = (lecture.title || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+  const w2 = chapterTitle.toLowerCase().replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+  const overlap = w1.filter(w => w2.includes(w) || w2.some(w2b => w.startsWith(w2b.slice(0, 4))));
+  return overlap.length >= 2;
+}
+
 export default function SubjectPage() {
   const { subjectId } = useParams();
   const { done } = useProgress();
@@ -29,11 +40,25 @@ export default function SubjectPage() {
   const subjectLectures = lecturesBySubject ? lecturesBySubject(subject.id) : [];
   const currentLecture = subjectLectures[selectedLectureIndex] || subjectLectures[0];
 
+  const handlePlayLecture = (index) => {
+    setSelectedLectureIndex(index);
+    window.scrollTo({ top: 120, behavior: 'smooth' });
+  };
+
   return (
     <>
       <SubjectNav />
-      <h1>{subject.name}</h1>
-      <p className="lede">{subject.blurb}</p>
+      <div className="subject-head-bar">
+        <div>
+          <h1>{subject.name}</h1>
+          <p className="lede">{subject.blurb}</p>
+        </div>
+        {subjectLectures.length > 0 && (
+          <span className="badge-lec-ready">
+            ✓ {subjectLectures.length} Video Lecture{subjectLectures.length > 1 ? 's' : ''} Ready
+          </span>
+        )}
+      </div>
 
       {/* Subject Video Lectures Section */}
       {subjectLectures.length > 0 && (
@@ -55,7 +80,7 @@ export default function SubjectPage() {
                       key={lec.id}
                       type="button"
                       className={`ghost subject-lecture-btn ${idx === selectedLectureIndex ? 'active' : ''}`}
-                      onClick={() => setSelectedLectureIndex(idx)}
+                      onClick={() => handlePlayLecture(idx)}
                     >
                       <span className="lec-idx">#{idx + 1}</span>
                       <span className="lec-title">{lec.title}</span>
@@ -90,14 +115,29 @@ export default function SubjectPage() {
         <>
           <h2 className="sub">{ready.length > 0 ? 'Coming next' : 'Chapters planned'}</h2>
           <ul className="chlist">
-            {subject.planned.map((title) => (
-              <li key={title}>
-                <div className="planned">
-                  <span>{title}</span>
-                  <small>Coming soon</small>
-                </div>
-              </li>
-            ))}
+            {subject.planned.map((title) => {
+              const matchedIdx = subjectLectures.findIndex((l) => matchesChapter(l, title));
+              const hasLec = matchedIdx !== -1;
+
+              return (
+                <li key={title}>
+                  <div className={`planned ${hasLec ? 'planned-has-lecture' : ''}`}>
+                    <span>{title}</span>
+                    {hasLec ? (
+                      <button
+                        type="button"
+                        className="ghost pill-lec-ready"
+                        onClick={() => handlePlayLecture(matchedIdx)}
+                      >
+                        ▶ Watch Lecture
+                      </button>
+                    ) : (
+                      <small>Coming soon</small>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

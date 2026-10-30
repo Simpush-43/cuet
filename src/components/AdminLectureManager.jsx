@@ -62,11 +62,22 @@ export default function AdminLectureManager() {
     }
   }, [subjects, subjectId]);
 
-  // Filter chapters based on selected subject in the form
-  const availableChapters = useMemo(() => {
+  const activeSubject = useMemo(() => {
+    return (subjects || []).find((s) => s.id === subjectId);
+  }, [subjects, subjectId]);
+
+  // Active chapters already in database
+  const readyChapters = useMemo(() => {
     if (!subjectId) return [];
     return (chapters || []).filter((c) => c.subject === subjectId);
   }, [chapters, subjectId]);
+
+  // Planned syllabus chapters from subjects
+  const plannedChapters = useMemo(() => {
+    if (!activeSubject || !Array.isArray(activeSubject.planned)) return [];
+    const readyTitles = new Set(readyChapters.map((c) => c.title.toLowerCase()));
+    return activeSubject.planned.filter((p) => !readyTitles.has(p.toLowerCase()));
+  }, [activeSubject, readyChapters]);
 
   // Handle Admin Login submission
   const handleLogin = async (e) => {
@@ -330,17 +341,30 @@ export default function AdminLectureManager() {
 
             {/* Chapter Selector */}
             <label>
-              Chapter (Optional)
+              Chapter / Topic (Optional)
               <select
                 value={chapterId}
                 onChange={(e) => setChapterId(e.target.value)}
               >
                 <option value="">General / Entire Subject</option>
-                {availableChapters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
+                {readyChapters.length > 0 && (
+                  <optgroup label="Active Chapters">
+                    {readyChapters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {plannedChapters.length > 0 && (
+                  <optgroup label="Syllabus Chapters (Auto-create Chapter)">
+                    {plannedChapters.map((title) => (
+                      <option key={`create:${title}`} value={`create:${title}`}>
+                        {title}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
           </div>

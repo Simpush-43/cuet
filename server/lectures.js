@@ -46,6 +46,59 @@ export function extractYouTubeId(urlOrId) {
   return null;
 }
 
+export function ensureChapter(subjectId, chapterInput) {
+  if (!chapterInput || typeof chapterInput !== 'string' || chapterInput.trim() === '') {
+    return { cleanChapterId: null, chapterTitle: null };
+  }
+
+  let title = chapterInput.trim();
+  if (title.startsWith('create:')) {
+    title = title.replace(/^create:/, '').trim();
+  }
+
+  // 1. Try finding by chapter ID
+  let existing = db.prepare('SELECT id, title, subject_id FROM chapters WHERE id = ?').get(title);
+  if (existing) {
+    if (existing.subject_id !== subjectId) {
+      throw new Error('Selected chapter belongs to a different subject.');
+    }
+    return { cleanChapterId: existing.id, chapterTitle: existing.title };
+  }
+
+  // 2. Try finding by Title in the same subject
+  existing = db.prepare('SELECT id, title, subject_id FROM chapters WHERE subject_id = ? AND LOWER(title) = LOWER(?)').get(subjectId, title);
+  if (existing) {
+    return { cleanChapterId: existing.id, chapterTitle: existing.title };
+  }
+
+  // 3. Auto-promote/create chapter for this subject
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `ch_${Date.now().toString(36)}`;
+
+  db.prepare(`
+    INSERT INTO chapters (id, subject_id, title, sort)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM chapters WHERE subject_id = ?))
+    ON CONFLICT(id) DO UPDATE SET title = excluded.title
+  `).run(slug, subjectId, title, subjectId);
+
+  // 4. Remove this title from subject.planned if it was listed there
+  const sub = db.prepare('SELECT planned FROM subjects WHERE id = ?').get(subjectId);
+  if (sub && sub.planned) {
+    try {
+      const planned = JSON.parse(sub.planned);
+      if (Array.isArray(planned)) {
+        const filtered = planned.filter((t) => t.toLowerCase() !== title.toLowerCase());
+        if (filtered.length !== planned.length) {
+          db.prepare('UPDATE subjects SET planned = ? WHERE id = ?').run(JSON.stringify(filtered), subjectId);
+        }
+      }
+    } catch {
+      /* ignore JSON error */
+    }
+  }
+
+  return { cleanChapterId: slug, chapterTitle: title };
+}
+
 const router = Router();
 
 // GET /api/lectures - Retrieve all lectures with optional subject/chapter filter
@@ -131,19 +184,17 @@ router.post('/', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Selected subject does not exist.' });
   }
 
-  // 4. Validate chapter existence if provided
+  // 4. Validate or auto-create chapter if provided
   let cleanChapterId = null;
   let chapterTitle = null;
   if (chapterId && chapterId.trim() !== '') {
-    const chapter = db.prepare('SELECT id, title, subject_id FROM chapters WHERE id = ?').get(chapterId);
-    if (!chapter) {
-      return res.status(400).json({ error: 'Selected chapter does not exist.' });
+    try {
+      const resolved = ensureChapter(subjectId, chapterId);
+      cleanChapterId = resolved.cleanChapterId;
+      chapterTitle = resolved.chapterTitle;
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'Invalid chapter.' });
     }
-    if (chapter.subject_id !== subjectId) {
-      return res.status(400).json({ error: 'Selected chapter does not belong to the selected subject.' });
-    }
-    cleanChapterId = chapter.id;
-    chapterTitle = chapter.title;
   }
 
   // 5. Generate ID and persist to database
@@ -210,15 +261,13 @@ router.put('/:id', requireAdmin, (req, res) => {
   let cleanChapterId = null;
   let chapterTitle = null;
   if (chapterId && chapterId.trim() !== '') {
-    const chapter = db.prepare('SELECT id, title, subject_id FROM chapters WHERE id = ?').get(chapterId);
-    if (!chapter) {
-      return res.status(400).json({ error: 'Selected chapter does not exist.' });
+    try {
+      const resolved = ensureChapter(subjectId, chapterId);
+      cleanChapterId = resolved.cleanChapterId;
+      chapterTitle = resolved.chapterTitle;
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'Invalid chapter.' });
     }
-    if (chapter.subject_id !== subjectId) {
-      return res.status(400).json({ error: 'Selected chapter does not belong to the selected subject.' });
-    }
-    cleanChapterId = chapter.id;
-    chapterTitle = chapter.title;
   }
 
   db.prepare(`
