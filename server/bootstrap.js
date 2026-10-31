@@ -2,8 +2,31 @@ import db from './db.js';
 import { upsertSubject, upsertChapter } from './content.js';
 import { subjects } from '../src/data/subjects.js';
 import { chapters } from '../src/data/index.js';
-import { bundledLectures } from '../src/data/lectures.js';
 import { ensureChapter } from './lectures.js';
+
+// Bundled lectures baked into the server — no external file needed
+const bundledLectures = [
+  {
+    id: 'lec_physics_electric_charges',
+    title: 'Electric Charges and Fields',
+    videoId: '1moTv15l4o8',
+    videoUrl: 'https://www.youtube.com/live/1moTv15l4o8?si=DhhX4ymHs6hQKDd5',
+    subjectId: 'physics',
+    chapterId: 'electric-charges-and-fields',
+    chapterTitle: 'Electric Charges and Fields',
+    createdAt: 1793346529598,
+  },
+  {
+    id: 'lec_sample_matrices',
+    title: 'Matrices & Operations Full Masterclass',
+    videoId: 'vB9_nFh2oXo',
+    videoUrl: 'https://www.youtube.com/watch?v=vB9_nFh2oXo',
+    subjectId: 'maths',
+    chapterId: 'matrices',
+    chapterTitle: 'Matrices',
+    createdAt: 1793346529598,
+  },
+];
 
 /**
  * Automatically seeds and initializes the database when the container boots up.

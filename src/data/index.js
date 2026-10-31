@@ -3,7 +3,7 @@ import determinants from './chapters/determinants.js';
 import differentiation from './chapters/differentiation.js';
 
 // Register every new chapter file here.
-export const chapters = [matrices, determinants, differentiation,'Electric Charges and Fields'];
+export const chapters = [matrices, determinants, differentiation];
 
 export const chaptersBySubject = (subjectId) =>
   chapters.filter((c) => c.subject === subjectId);

@@ -1,8 +1,31 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { subjects as bundledSubjects } from '../data/subjects.js';
 import { chapters as bundledChapters } from '../data/index.js';
-import { bundledLectures } from '../data/lectures.js';
 import { api } from '../utils/api.js';
+
+// Bundled fallback lectures — baked in so they appear instantly before API responds
+const bundledLectures = [
+  {
+    id: 'lec_physics_electric_charges',
+    title: 'Electric Charges and Fields',
+    videoId: '1moTv15l4o8',
+    videoUrl: 'https://www.youtube.com/live/1moTv15l4o8?si=DhhX4ymHs6hQKDd5',
+    subjectId: 'physics',
+    chapterId: 'electric-charges-and-fields',
+    chapterTitle: 'Electric Charges and Fields',
+    createdAt: 1793346529598,
+  },
+  {
+    id: 'lec_sample_matrices',
+    title: 'Matrices & Operations Full Masterclass',
+    videoId: 'vB9_nFh2oXo',
+    videoUrl: 'https://www.youtube.com/watch?v=vB9_nFh2oXo',
+    subjectId: 'maths',
+    chapterId: 'matrices',
+    chapterTitle: 'Matrices',
+    createdAt: 1793346529598,
+  },
+];
 
 const ContentContext = createContext(null);
 

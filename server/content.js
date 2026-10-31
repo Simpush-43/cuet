@@ -79,6 +79,9 @@ export async function validateChapter(ch) {
 }
 
 export async function upsertChapter(ch) {
+  // Skip chapters with no id — would violate NOT NULL constraint
+  if (!ch?.id) return;
+
   const existing = await db.get('SELECT sort FROM chapters WHERE id = ?', [ch.id]);
   const maxRow = await db.get('SELECT COALESCE(MAX(sort), 0) + 1 AS n FROM chapters');
   const sort = existing ? existing.sort : (maxRow?.n || 1);
